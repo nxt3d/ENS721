@@ -51,7 +51,7 @@ contract ENS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
     /**
      * @dev See {IERC165-supportsInterface}.
      */
-    function supportsInterface(bytes4 interfaceId) public view override(ERC165, IERC165) returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view override(ERC165, IERC165) virtual returns (bool) {
         return
             interfaceId == type(IERC721).interfaceId ||
             interfaceId == type(IERC721Metadata).interfaceId ||
@@ -61,7 +61,7 @@ contract ENS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
     /**
      WE DO NOT NEED THIS FUNCTION
      */
-    function balanceOf(address ) public view  returns (uint256) {
+    function balanceOf(address ) public pure  returns (uint256) {
         revert UnsupportedFunction();
     }
 
@@ -101,7 +101,7 @@ contract ENS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
      * token will be the concatenation of the `baseURI` and the `tokenId`. Empty
      * by default, can be overridden in child contracts.
      */
-    function _baseURI() internal view returns (string memory) {
+    function _baseURI() internal pure returns (string memory) {
         return "";
     }
 
