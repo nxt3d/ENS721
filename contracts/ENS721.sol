@@ -10,24 +10,39 @@ import {Context} from "@openzeppelin/contracts/utils/Context.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {IERC165, ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {IERC721Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
+import {IController} from "./IController.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
+
+import "forge-std/console2.sol";
 
 error UnsupportedFunction();
+error LabelTooShort();
+error LabelTooLong(string label);
 
 /**
  * @dev Implementation of https://eips.ethereum.org/EIPS/eip-721[ERC721] Non-Fungible Token Standard, including
  * the Metadata extension, but not including the Enumerable extension, which is available separately as
  * {ERC721Enumerable}.
  */
-contract ENS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
+contract ENS721 is Context, ERC165, AccessControl, IERC721, IERC721Metadata, IERC721Errors {
     using Strings for uint256;
 
+    struct Record {
+        bytes name;
+        bytes data;
+    }
+
+    string public baseURI;
+
+    bytes32 public constant CONTROLLER_ROLE = keccak256("CONTROLLER_ROLE");
+
     // Token name
-    string private _name;
+    string public _name;
 
     // Token symbol
-    string private _symbol;
+    string public _symbol;
 
-    mapping(uint256 tokenId => address) private _owners;
+    mapping(uint256 tokenId => Record) private _tokens;
 
     mapping(address owner => uint256) private _balances;
 
@@ -38,20 +53,60 @@ contract ENS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
     mapping(address owner => mapping( uint256 nonce => mapping(uint256 id => mapping(address operator => bool)))) private _tokenOperatorApprovals;
 
     // a nonce for each owner to be able to revoke a token token operator approvals
-    mapping(address owner => uint256) private _tokenOperatorApprovalsNonce;
+    mapping(address owner => uint256) public tokenOperatorApprovalsNonce;
+
+    event NewController(uint256 id, address controller);
 
     /**
      * @dev Initializes the contract by setting a `name` and a `symbol` to the token collection.
      */
-    constructor(string memory name_, string memory symbol_) {
+    constructor(string memory name_, string memory symbol_, address rootController) {
         _name = name_;
         _symbol = symbol_;
+
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(CONTROLLER_ROLE, msg.sender);
+
+        // Setup the root node data. 
+        _tokens[0].data = abi.encodePacked(rootController, msg.sender, uint64(0), uint64(0), address(0));
+
+        // Setup the root node name.
+        _tokens[0].name = (bytes("\x00"));
+    }
+
+    function setBaseURI(string memory _baseURI) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        baseURI = _baseURI;
+    }
+
+    function getData(uint256 tokenId) public view returns (bytes memory) {
+        return _tokens[tokenId].data;
+    }
+
+    function getName(uint256 tokenId) public view returns (bytes memory) {
+        return _tokens[tokenId].name;
+    }
+
+    function resolver(uint256 id) external view returns (address /*resolver*/) {
+        bytes memory tokenData = _tokens[id].data;
+        IController _controller = getController(tokenData);
+        return _controller.resolverFor(tokenData);
+    }
+
+    function getController(
+        bytes memory data
+    ) public pure returns (IController addr) {
+        if (data.length < 20) {
+            return IController(address(0));
+        }
+        assembly {
+            addr := mload(add(data, 20))
+        }
     }
 
     /**
      * @dev See {IERC165-supportsInterface}.
      */
-    function supportsInterface(bytes4 interfaceId) public view override(ERC165, IERC165) virtual returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view override(ERC165, IERC165, AccessControl) virtual returns (bool) {
         return
             interfaceId == type(IERC721).interfaceId ||
             interfaceId == type(IERC721Metadata).interfaceId ||
@@ -92,17 +147,8 @@ contract ENS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
     function tokenURI(uint256 tokenId) public view returns (string memory) {
         _requireOwned(tokenId);
 
-        string memory baseURI = _baseURI();
-        return bytes(baseURI).length > 0 ? string.concat(baseURI, tokenId.toString()) : "";
-    }
-
-    /**
-     * @dev Base URI for computing {tokenURI}. If set, the resulting URI for each
-     * token will be the concatenation of the `baseURI` and the `tokenId`. Empty
-     * by default, can be overridden in child contracts.
-     */
-    function _baseURI() internal pure returns (string memory) {
-        return "";
+        string memory _baseURI = baseURI;
+        return bytes(_baseURI).length > 0 ? string.concat(_baseURI, tokenId.toString()) : "";
     }
 
     /**
@@ -145,16 +191,7 @@ contract ENS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
         if (_msgSender() != owner && !_operatorApprovals[owner][_msgSender()]) {
             revert ERC721InvalidOperator(_msgSender());
         }
-        _tokenOperatorApprovalsNonce[owner]++;
-    }
-
-    /**
-     * @dev Returns the nonce for token operator approvals of a specific owner.
-     * @param owner The address of the owner.
-     * @return The nonce value.
-     */
-    function getTokenOperatorApprovalsNonce(address owner) public view returns (uint256) {
-        return _tokenOperatorApprovalsNonce[owner];
+        tokenOperatorApprovalsNonce[owner]++;
     }
 
     /**
@@ -170,7 +207,7 @@ contract ENS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
         if (_msgSender() != owner && !_operatorApprovals[owner][_msgSender()]) {
             revert ERC721InvalidOperator(_msgSender());
         }
-        _tokenOperatorApprovals[owner][getTokenOperatorApprovalsNonce(owner)][tokenId][operator] = approved;
+        _tokenOperatorApprovals[owner][tokenOperatorApprovalsNonce[owner]][tokenId][operator] = approved;
     }
 
     /**
@@ -181,7 +218,7 @@ contract ENS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
      * @return A boolean value indicating whether the operator is approved.
      */
     function isOperatorApprovedForToken(address owner, uint256 tokenId, address operator) public view returns (bool) {
-        return _tokenOperatorApprovals[owner][getTokenOperatorApprovalsNonce(owner)][tokenId][operator];
+        return _tokenOperatorApprovals[owner][tokenOperatorApprovalsNonce[owner]][tokenId][operator];
     }
 
     /**
@@ -191,7 +228,7 @@ contract ENS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
         if (to == address(0)) {
             revert ERC721InvalidReceiver(address(0));
         }
-        // Setting an "auth" arguments enables the `_isAuthorized` check which verifies that the token exists
+        // Setting an "auth" arguments enables the `isAuthorized` check which verifies that the token exists
         // (from != 0). Therefore, it is not needed to verify that the return value is not 0 here.
         address previousOwner = _update(to, tokenId, _msgSender());
         if (previousOwner != from) {
@@ -223,7 +260,13 @@ contract ENS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
      * `balanceOf(a)` must be equal to the number of tokens such that `_ownerOf(tokenId)` is `a`.
      */
     function _ownerOf(uint256 tokenId) internal view returns (address) {
-        return _owners[tokenId];
+        bytes memory tokenData = _tokens[tokenId].data;
+        IController _controller = getController(_tokens[tokenId].data); 
+
+        if (address(_controller) == address(0)) {
+            return address(0);
+        }
+        return _controller.ownerOfWithData(tokenData);
     }
 
     /**
@@ -240,7 +283,7 @@ contract ENS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
      * WARNING: This function assumes that `owner` is the actual owner of `tokenId` and does not verify this
      * assumption.
      */
-    function _isAuthorized(address owner, address spender, uint256 tokenId) internal view returns (bool) {
+    function isAuthorized(address owner, address spender, uint256 tokenId) public view returns (bool) {
         return
             spender != address(0) &&
             (
@@ -260,28 +303,12 @@ contract ENS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
      * assumption.
      */
     function _checkAuthorized(address owner, address spender, uint256 tokenId) internal view {
-        if (!_isAuthorized(owner, spender, tokenId)) {
+        if (!isAuthorized(owner, spender, tokenId)) {
             if (owner == address(0)) {
                 revert ERC721NonexistentToken(tokenId);
             } else {
                 revert ERC721InsufficientApproval(spender, tokenId);
             }
-        }
-    }
-
-    /**
-     * @dev Unsafe write access to the balances, used by extensions that "mint" tokens using an {ownerOf} override.
-     *
-     * NOTE: the value is limited to type(uint128).max. This protect against _balance overflow. It is unrealistic that
-     * a uint256 would ever overflow from increments when these increments are bounded to uint128 values.
-     *
-     * WARNING: Increasing an account's balance using this function tends to be paired with an override of the
-     * {_ownerOf} function to resolve the ownership of the corresponding tokens so that balances and ownership
-     * remain consistent with one another.
-     */
-    function _increaseBalance(address account, uint128 value) internal {
-        unchecked {
-            _balances[account] += value;
         }
     }
 
@@ -299,6 +326,9 @@ contract ENS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
     function _update(address to, uint256 tokenId, address auth) internal returns (address) {
         address from = _ownerOf(tokenId);
 
+        // get the token data
+        bytes memory tokenData = _tokens[tokenId].data;
+
         // Perform (optional) operator check
         if (auth != address(0)) {
             _checkAuthorized(from, auth, tokenId);
@@ -308,69 +338,17 @@ contract ENS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
         if (from != address(0)) {
             // Clear approval. No need to re-authorize or emit the Approval event
             _approve(address(0), tokenId, address(0), false);
-
-            unchecked {
-                _balances[from] -= 1;
-            }
         }
 
-        if (to != address(0)) {
-            unchecked {
-                _balances[to] += 1;
-            }
-        }
+        IController _controller = getController(_tokens[tokenId].data);
 
-        _owners[tokenId] = to;
+        _controller.update(bytes32(tokenId), tokenData, to);
 
         emit Transfer(from, to, tokenId);
 
         return from;
     }
 
-    /**
-     * @dev Mints `tokenId` and transfers it to `to`.
-     *
-     * WARNING: Usage of this method is discouraged, use {_safeMint} whenever possible
-     *
-     * Requirements:
-     *
-     * - `tokenId` must not exist.
-     * - `to` cannot be the zero address.
-     *
-     * Emits a {Transfer} event.
-     */
-    function _mint(address to, uint256 tokenId) internal {
-        if (to == address(0)) {
-            revert ERC721InvalidReceiver(address(0));
-        }
-        address previousOwner = _update(to, tokenId, address(0));
-        if (previousOwner != address(0)) {
-            revert ERC721InvalidSender(address(0));
-        }
-    }
-
-    /**
-     * @dev Mints `tokenId`, transfers it to `to` and checks for `to` acceptance.
-     *
-     * Requirements:
-     *
-     * - `tokenId` must not exist.
-     * - If `to` refers to a smart contract, it must implement {IERC721Receiver-onERC721Received}, which is called upon a safe transfer.
-     *
-     * Emits a {Transfer} event.
-     */
-    function _safeMint(address to, uint256 tokenId) internal {
-        _safeMint(to, tokenId, "");
-    }
-
-    /**
-     * @dev Same as {xref-ERC721-_safeMint-address-uint256-}[`_safeMint`], with an additional `data` parameter which is
-     * forwarded in {IERC721Receiver-onERC721Received} to contract recipients.
-     */
-    function _safeMint(address to, uint256 tokenId, bytes memory data) internal {
-        _mint(to, tokenId);
-        _checkOnERC721Received(address(0), to, tokenId, data);
-    }
 
     /**
      * @dev Destroys `tokenId`.
@@ -468,7 +446,7 @@ contract ENS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
         if (emitEvent || auth != address(0)) {
             address owner = _requireOwned(tokenId);
 
-            // We do not use _isAuthorized because single-token approvals should not be able to call approve
+            // We do not use isAuthorized because single-token approvals should not be able to call approve
             if (auth != address(0) && owner != auth && !isApprovedForAll(owner, auth)) {
                 revert ERC721InvalidApprover(auth);
             }
@@ -504,7 +482,11 @@ contract ENS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
      * Overrides to ownership logic should be done to {_ownerOf}.
      */
     function _requireOwned(uint256 tokenId) internal view returns (address) {
-        address owner = _ownerOf(tokenId);
+        
+        bytes memory tokenData = _tokens[tokenId].data;
+        IController _controller = getController(tokenData);
+        address owner = _controller.ownerOfWithData(tokenData);
+
         if (owner == address(0)) {
             revert ERC721NonexistentToken(tokenId);
         }
@@ -538,4 +520,97 @@ contract ENS721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Errors {
             }
         }
     }
+
+
+    /*****************************
+     * Controller-only functions *
+     *****************************/
+
+    function setNode(uint256 tokenId, bytes memory data) external {
+        // Fetch the current controller for this node
+        IController oldController = getController(_tokens[tokenId].data);
+
+        // Only the controller may call this function
+        require(address(oldController) == msg.sender);
+
+        // Fetch the new controller and emit `NewController` if needed.
+        IController newController = getController(data);
+        if (oldController != newController) {
+            emit NewController(tokenId, address(newController));
+        }
+
+        // Update the data for this node.
+        _tokens[tokenId].data = data;
+    }
+
+    function setSubnode(
+        uint256 tokenId,
+        string memory label,
+        bytes memory subnodeData,
+        address to
+    ) external {
+
+        // Fetch the token data and controller for the current node
+        bytes memory tokenData = _tokens[tokenId].data;
+        IController _controller = getController(tokenData);
+
+        // Only the controller of the node may call this function
+        require(address(_controller) == msg.sender, "Caller is not the controller");
+
+        // Get the name of the node, if the name is empty revert the transaction.
+        bytes memory nameNode = getName(tokenId);
+
+        if (nameNode.length == 0) {
+            revert("Name not found");
+        }
+
+        // Make the DNS encoded name of the subnode
+        bytes memory subName = _addLabel(label, nameNode);
+
+        // Make a labelhash from the label
+        bytes32 labelhash = keccak256(abi.encodePacked(label));
+
+        // Make a subnode from the labelhash and the node
+        bytes32 subnode = keccak256(abi.encodePacked(tokenId, labelhash));
+
+        // Set the name of the subnode.
+         _tokens[uint256(subnode)].name = subName;
+
+        // Get the the data of the subnode. 
+        bytes memory oldSubnodeData = _tokens[uint256(subnode)].data;
+        IController oldSubnodeController = getController(oldSubnodeData);
+        address oldOwner = oldSubnodeData.length < 20
+            ? address(0)
+            : oldSubnodeController.ownerOfWithData(oldSubnodeData);
+
+        // Get the address of the new controller
+        IController newSubnodeController = getController(subnodeData);
+        if (newSubnodeController != oldSubnodeController) {
+            emit NewController(uint256(subnode), address(newSubnodeController));
+        }
+
+        _tokens[uint256(subnode)].data = subnodeData;
+
+        // If the to address is 0 and the data has an address, use the address in the data.
+        if (to == address(0) && subnodeData.length >= 20) {
+            to = newSubnodeController.ownerOfWithData(subnodeData);
+        }
+
+        emit Transfer(oldOwner, to, tokenId);
+
+    }
+
+    function _addLabel(
+        string memory label,
+        bytes memory nameNode
+    ) internal pure returns (bytes memory ret) {
+        if (bytes(label).length < 1) {
+            revert LabelTooShort();
+        }
+        if (bytes(label).length > 255) {
+            revert LabelTooLong(label);
+        }
+        return abi.encodePacked(uint8(bytes(label).length), label, nameNode);
+    }
+
 }
