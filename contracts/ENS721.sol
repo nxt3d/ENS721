@@ -182,25 +182,13 @@ contract ENS721 is Context, ERC165, AccessControl, IERC721, IERC721Metadata, IER
     }
 
     /**
-     * @dev Clears the operator approvals for a given owner.
-     * @param owner The address of the owner.
-     */
-    function clearTokenOperatorApprovals(address owner) public {
-
-        // Check to make sure the sender is either the owner or an approved operator.
-        if (_msgSender() != owner && !_operatorApprovals[owner][_msgSender()]) {
-            revert ERC721InvalidOperator(_msgSender());
-        }
-        tokenOperatorApprovalsNonce[owner]++;
-    }
-
-    /**
      * @dev Sets or revokes approval for a specific operator to manage a specific token.
      * @param owner The address of the owner.
      * @param operator The address of the operator to set or revoke approval for.
      * @param tokenId The ID of the token to set or revoke approval for.
      * @param approved A boolean indicating whether to approve or revoke the operator's approval.
      */
+
     function setOperatorApprovalForToken(address owner, address operator, uint256 tokenId, bool approved) public {
 
         // Check to make sure the sender is either the owner or an approved operator.
@@ -217,9 +205,25 @@ contract ENS721 is Context, ERC165, AccessControl, IERC721, IERC721Metadata, IER
      * @param operator The address of the operator.
      * @return A boolean value indicating whether the operator is approved.
      */
+
     function isOperatorApprovedForToken(address owner, uint256 tokenId, address operator) public view returns (bool) {
         return _tokenOperatorApprovals[owner][tokenOperatorApprovalsNonce[owner]][tokenId][operator];
     }
+
+    /**
+     * @dev Clears the operator approvals for a given owner.
+     * @param owner The address of the owner.
+     */
+
+    function clearTokenOperatorApprovals(address owner) public {
+
+        // Check to make sure the sender is either the owner or an approved operator.
+        if (_msgSender() != owner && !_operatorApprovals[owner][_msgSender()]) {
+            revert ERC721InvalidOperator(_msgSender());
+        }
+        tokenOperatorApprovalsNonce[owner]++;
+    }
+
 
     /**
      * @dev See {IERC721-transferFrom}.
@@ -551,8 +555,7 @@ contract ENS721 is Context, ERC165, AccessControl, IERC721, IERC721Metadata, IER
     ) external {
 
         // Fetch the token data and controller for the current node
-        bytes memory tokenData = _tokens[tokenId].data;
-        IController _controller = getController(tokenData);
+        IController _controller = getController(_tokens[tokenId].data);
 
         // Only the controller of the node may call this function
         require(address(_controller) == msg.sender, "Caller is not the controller");
