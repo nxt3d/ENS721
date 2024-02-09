@@ -365,24 +365,6 @@ contract ENS721 is Context, ERC165, AccessControl, Pausable, IERC721, IERC721Met
 
 
     /**
-     * @dev Destroys `tokenId`.
-     * The approval is cleared when the token is burned.
-     * This is an internal function that does not check if the sender is authorized to operate on the token.
-     *
-     * Requirements:
-     *
-     * - `tokenId` must exist.
-     *
-     * Emits a {Transfer} event.
-     */
-    function _burn(uint256 tokenId) internal {
-        address previousOwner = _update(address(0), tokenId, address(0));
-        if (previousOwner == address(0)) {
-            revert ERC721NonexistentToken(tokenId);
-        }
-    }
-
-    /**
      * @dev Transfers `tokenId` from `from` to `to`.
      *  As opposed to {transferFrom}, this imposes no restrictions on msg.sender.
      *
@@ -545,7 +527,7 @@ contract ENS721 is Context, ERC165, AccessControl, Pausable, IERC721, IERC721Met
         IController oldController = getController(_tokens[tokenId].data);
 
         // Only the controller may call this function
-        require(address(oldController) == msg.sender);
+        require(address(oldController) == msg.sender, "Caller is not the controller");
 
         // Fetch the new controller and emit `NewController` if needed.
         IController newController = getController(data);
