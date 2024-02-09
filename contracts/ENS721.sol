@@ -11,6 +11,7 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {IERC165, ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {IERC721Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IController} from "./IController.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 import "forge-std/console2.sol";
@@ -24,7 +25,7 @@ error LabelTooLong(string label);
  * the Metadata extension, but not including the Enumerable extension, which is available separately as
  * {ERC721Enumerable}.
  */
-contract ENS721 is Context, ERC165, AccessControl, IERC721, IERC721Metadata, IERC721Errors {
+contract ENS721 is Context, ERC165, AccessControl, Pausable, IERC721, IERC721Metadata, IERC721Errors {
     using Strings for uint256;
 
     struct Record {
@@ -35,6 +36,7 @@ contract ENS721 is Context, ERC165, AccessControl, IERC721, IERC721Metadata, IER
     string public baseURI;
 
     bytes32 public constant CONTROLLER_ROLE = keccak256("CONTROLLER_ROLE");
+    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
     // Token name
     string public _name;
@@ -66,6 +68,7 @@ contract ENS721 is Context, ERC165, AccessControl, IERC721, IERC721Metadata, IER
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(CONTROLLER_ROLE, msg.sender);
+        _grantRole(PAUSER_ROLE, msg.sender);
 
         // Setup the root node data. 
         _tokens[0].data = abi.encodePacked(rootController, msg.sender, uint64(0), uint64(0), address(0));
@@ -101,6 +104,14 @@ contract ENS721 is Context, ERC165, AccessControl, IERC721, IERC721Metadata, IER
         assembly {
             addr := mload(add(data, 20))
         }
+    }
+
+    function pause() public onlyRole(PAUSER_ROLE) {
+        _pause();
+    }
+
+    function unpause() public onlyRole(PAUSER_ROLE) {
+        _unpause();
     }
 
     /**
@@ -189,7 +200,7 @@ contract ENS721 is Context, ERC165, AccessControl, IERC721, IERC721Metadata, IER
      * @param approved A boolean indicating whether to approve or revoke the operator's approval.
      */
 
-    function setOperatorApprovalForToken(address owner, address operator, uint256 tokenId, bool approved) public {
+    function setOperatorApprovalForToken(address owner, uint256 tokenId, address operator, bool approved) public {
 
         // Check to make sure the sender is either the owner or an approved operator.
         if (_msgSender() != owner && !_operatorApprovals[owner][_msgSender()]) {
@@ -224,7 +235,6 @@ contract ENS721 is Context, ERC165, AccessControl, IERC721, IERC721Metadata, IER
         tokenOperatorApprovalsNonce[owner]++;
     }
 
-
     /**
      * @dev See {IERC721-transferFrom}.
      */
@@ -243,16 +253,34 @@ contract ENS721 is Context, ERC165, AccessControl, IERC721, IERC721Metadata, IER
     /**
      * @dev See {IERC721-safeTransferFrom}.
      */
-    function safeTransferFrom(address from, address to, uint256 tokenId) public {
+    function safeTransferFrom(address from, address to, uint256 tokenId) public whenNotPaused{
         safeTransferFrom(from, to, tokenId, "");
     }
 
     /**
      * @dev See {IERC721-safeTransferFrom}.
      */
-    function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory data) public {
+    function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory data) public whenNotPaused{
         transferFrom(from, to, tokenId);
         _checkOnERC721Received(from, to, tokenId, data);
+    }
+
+    /**
+     * @dev Returns whether `spender` is allowed to manage `owner`'s tokens, or `tokenId` in
+     * particular (ignoring whether it is owned by `owner`).
+     *
+     * WARNING: This function assumes that `owner` is the actual owner of `tokenId` and does not verify this
+     * assumption.
+     */
+    function isAuthorized(address owner, address spender, uint256 tokenId) public view returns (bool) {
+        return
+            spender != address(0) &&
+            (
+                owner == spender || 
+                isApprovedForAll(owner, spender) || 
+                _getApproved(tokenId) == spender || 
+                isOperatorApprovedForToken(owner, tokenId, spender)
+            );
     }
 
     /**
@@ -278,24 +306,6 @@ contract ENS721 is Context, ERC165, AccessControl, IERC721, IERC721Metadata, IER
      */
     function _getApproved(uint256 tokenId) internal view returns (address) {
         return _tokenApprovals[tokenId];
-    }
-
-    /**
-     * @dev Returns whether `spender` is allowed to manage `owner`'s tokens, or `tokenId` in
-     * particular (ignoring whether it is owned by `owner`).
-     *
-     * WARNING: This function assumes that `owner` is the actual owner of `tokenId` and does not verify this
-     * assumption.
-     */
-    function isAuthorized(address owner, address spender, uint256 tokenId) public view returns (bool) {
-        return
-            spender != address(0) &&
-            (
-                owner == spender || 
-                isApprovedForAll(owner, spender) || 
-                _getApproved(tokenId) == spender || 
-                isOperatorApprovedForToken(owner, tokenId, spender)
-            );
     }
 
     /**
@@ -602,6 +612,10 @@ contract ENS721 is Context, ERC165, AccessControl, IERC721, IERC721Metadata, IER
         emit Transfer(oldOwner, to, tokenId);
 
     }
+
+    /*******************
+     * Utility functions *
+     *******************/
 
     function _addLabel(
         string memory label,

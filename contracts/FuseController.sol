@@ -257,6 +257,37 @@ contract FuseController is AccessControl, IFuseController {
         );
     }
 
+    // a function to set the owner of a node
+    function setOwner(bytes32 node, address newOwner) external {
+        // get tokenData
+        bytes memory tokenData = registry.getData(uint256(node));
+        (
+            address owner,
+            address resolver,
+            uint64 expiry,
+            uint64 fuses,
+            address renewalController
+        ) = _unpack(tokenData);
+
+        bool isAuthorized = registry.isAuthorized(owner, msg.sender, uint256(node));
+
+        if (owner != msg.sender && !isAuthorized) {
+            revert Unauthorised(node, msg.sender);
+        }
+
+        registry.setNode(
+            uint256(node),
+            _pack(
+                address(this),
+                newOwner,
+                resolver,
+                expiry,
+                fuses,
+                renewalController
+            )
+        );
+    }
+
     /*******************
      * Owner only functions *
      *******************/

@@ -28,7 +28,7 @@ interface IENS721 is IERC721, IERC721Metadata, IERC721Errors {
 
     function clearTokenOperatorApprovals(address owner) external;
 
-    function setOperatorApprovalForToken(address owner, address operator, uint256 tokenId, bool approved) external;
+    function setOperatorApprovalForToken(address owner,  uint256 tokenId, address operator, bool approved) external;
 
     function isOperatorApprovedForToken(address owner, uint256 tokenId, address operator) external view returns (bool); 
 

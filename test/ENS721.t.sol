@@ -286,10 +286,7 @@ contract ENS721Test is Test {
     }
 
     // Make sure that isApprovedForAll returns true if the operator is approved for the token
-    function test_016____isApprovedForAll__________________isApprovedForAll() public {
-
-        // Add a test node
-        bytes32 dotEthNode = bytes("\x03eth\x00").namehash(0);
+    function test_016____isApprovedForAll_________________isApprovedForAll() public {
 
         // Set the operator approval for the .eth node
         ensRegistry.setApprovalForAll(account2, true);
@@ -304,7 +301,173 @@ contract ENS721Test is Test {
         assert(!ensRegistry.isApprovedForAll(account, account2));
     }
 
+    // Make sure the owner can set an operator approval for a token using the function setOperatorApprovalForToken and transfer the token
 
+    function test_017____setOperatorApprovalForToken______setOperatorApprovalForToken() public {
+
+        // Add a test node
+        bytes32 dotEthNode = bytes("\x03eth\x00").namehash(0);
+
+        // Set the operator approval for the .eth node
+        ensRegistry.setOperatorApprovalForToken(account, uint256(dotEthNode), account2 , true);
+
+        // Make sure the operator approval for the .eth node is set using isOperatorApprovedForToken
+        assert(ensRegistry.isOperatorApprovedForToken(account, uint256(dotEthNode), account2));
+
+        vm.stopPrank();
+        // Change the caller to account2.
+        vm.startPrank(account2);
+
+        // Transfer the token from account to account3 using the transferFrom() function
+        ensRegistry.transferFrom(account, account3, uint256(dotEthNode));
+
+        // Make sure the owner of the .eth node is the account3
+        assertEq(ensRegistry.ownerOf(uint256(dotEthNode)), account3);
+    }
+
+    // Make sure that isOperatorApprovedForToken returns true if the operator is approved for the token
+    function test_018____isOperatorApprovedForToken_______isOperatorApprovedForToken() public {
+
+
+        // Add a test node
+        bytes32 dotEthNode = bytes("\x03eth\x00").namehash(0);
+
+        // Set the operator approval for the .eth node
+        ensRegistry.setOperatorApprovalForToken(account, uint256(dotEthNode), account2 , true);
+
+        // Make sure the operator approval for the .eth node is set using isOperatorApprovedForToken
+        assert(ensRegistry.isOperatorApprovedForToken(account, uint256(dotEthNode), account2));
+
+    }
+
+    // Make sure that if two operator approvals are set, they can both be cleared using clearTokenOperatorApprovals
+    function test_019____clearTokenOperatorApprovals________clearTokenOperatorApprovals() public {
+
+        // Add a test node
+        bytes32 dotEthNode = bytes("\x03eth\x00").namehash(0);
+
+        // Set the operator approval for the .eth node
+        ensRegistry.setOperatorApprovalForToken(account, uint256(dotEthNode), account2 , true);
+
+        // Set the operator approval for the .eth node
+        ensRegistry.setOperatorApprovalForToken(account, uint256(dotEthNode), account3 , true);
+
+        // Make sure the operator approval for the .eth node is set using isOperatorApprovedForToken
+        assert(ensRegistry.isOperatorApprovedForToken(account, uint256(dotEthNode), account2));
+        assert(ensRegistry.isOperatorApprovedForToken(account, uint256(dotEthNode), account3));
+
+        // Clear the operator approval for the .eth node
+        ensRegistry.clearTokenOperatorApprovals(account);
+
+        // Make sure the operator approval for the .eth node is not set using isOperatorApprovedForToken
+        assert(!ensRegistry.isOperatorApprovedForToken(account, uint256(dotEthNode), account2));
+        assert(!ensRegistry.isOperatorApprovedForToken(account, uint256(dotEthNode), account3));
+    }
+
+    // Make sure the owner can transfer the token using the transferFrom function
+    function test_020____transferFrom______________________transferFrom() public {
+
+        // Add a test node
+        bytes32 dotEthNode = bytes("\x03eth\x00").namehash(0);
+
+        // Transfer the token from account to account3 using the transferFrom() function
+        ensRegistry.transferFrom(account, account3, uint256(dotEthNode));
+
+        // Make sure the owner of the .eth node is the account3
+        assertEq(ensRegistry.ownerOf(uint256(dotEthNode)), account3);
+    }
+
+    // Make sure the owner can transfer the token using the safeTransferFrom function
+    function test_021____safeTransferFrom__________________safeTransferFrom() public {
+
+        // Add a test node
+        bytes32 dotEthNode = bytes("\x03eth\x00").namehash(0);
+
+        // Transfer the token from account to account3 using the safeTransferFrom() function
+        ensRegistry.safeTransferFrom(account, account3, uint256(dotEthNode));
+
+        // Make sure the owner of the .eth node is the account3
+        assertEq(ensRegistry.ownerOf(uint256(dotEthNode)), account3);
+    }
+
+    // Make sure the owner can transfer the token using the safeTransferFrom function with data
+    function test_022____safeTransferFrom__________________safeTransferFrom() public {
+
+        // Add a test node
+        bytes32 dotEthNode = bytes("\x03eth\x00").namehash(0);
+
+        // Transfer the token from account to account3 using the safeTransferFrom() function
+        ensRegistry.safeTransferFrom(account, account3, uint256(dotEthNode), "data");
+
+        // Make sure the owner of the .eth node is the account3
+        assertEq(ensRegistry.ownerOf(uint256(dotEthNode)), account3);
+    }
+
+    // Make sure that calling isAuthorized on an authorized account returns true
+    function test_023____isAuthorized______________________isAuthorized() public {
+
+        // Add a test node
+        bytes32 dotEthNode = bytes("\x03eth\x00").namehash(0);
+
+        // Set the operator approval for the .eth node
+        ensRegistry.setOperatorApprovalForToken(account, uint256(dotEthNode), account2 , true);
+
+        // Make sure the operator approval for the .eth node is set using isOperatorApprovedForToken
+        assert(ensRegistry.isOperatorApprovedForToken(account, uint256(dotEthNode), account2));
+
+        // Make sure that calling isAuthorized on an authorized account returns true
+        assert(ensRegistry.isAuthorized(account, account2, uint256(dotEthNode)));
+    }
+
+    // Make sure that calling isAuthorized on an authorized account returns true, using the approve function
+    function test_024____isAuthorized______________________isAuthorized() public {
+
+        // Add a test node
+        bytes32 dotEthNode = bytes("\x03eth\x00").namehash(0);
+
+        // Authorize account2 to transfer the .eth node
+        ensRegistry.approve(account2, uint256(dotEthNode));
+
+        // Make sure that calling isAuthorized on an authorized account returns true
+        assert(ensRegistry.isAuthorized(account, account2, uint256(dotEthNode)));
+    }
+
+    // Make sure that calling isAuthorized on an authorized account returns true, using the setApprovalForAll function
+    function test_025____isAuthorized______________________isAuthorized() public {
+
+        // Add a test node
+        bytes32 dotEthNode = bytes("\x03eth\x00").namehash(0);
+
+        // Set the operator approval for the .eth node
+        ensRegistry.setApprovalForAll(account2, true);
+
+        // Make sure that calling isAuthorized on an authorized account returns true
+        assert(ensRegistry.isAuthorized(account, account2, uint256(dotEthNode)));
+    }
+
+    // Make sure that calling isAuthorized on an the owner returns true
+    function test_026____isAuthorized______________________isAuthorized() public {
+
+        // Add a test node
+        bytes32 dotEthNode = bytes("\x03eth\x00").namehash(0);
+
+        // Make sure that calling isAuthorized on an the owner returns true
+        assert(ensRegistry.isAuthorized(account, account, uint256(dotEthNode)));
+    }
+
+    // Use the setOwner function on the .eth node to set the owner to account2
+    // This will call the setNode function in the ENS Registry
+    function test_027____setNode___________________________setNode() public {
+
+        // Add a test node
+        bytes32 dotEthNode = bytes("\x03eth\x00").namehash(0);
+
+        // Set the owner of the .eth node to account2
+        fuseController.setOwner(dotEthNode, account2);
+
+        // Make sure the owner of the .eth node is the account2
+        assertEq(ensRegistry.ownerOf(uint256(dotEthNode)), account2);
+    }
 
 
 

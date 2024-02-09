@@ -1,66 +1,11 @@
-## Foundry
+# ENS 721 Registry using ERC721 and Controllers
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+This registry design uses ERC-721 as the NFT standard. It allows owners of names to upgrade controllers, enabling new features and bug fixes in the future. It is not possible to upgrade the registry to a different NFT standard to ensure all names remain part of the same single NFT collection, even after a name is upgraded to a new controller. The design supports multiple controllers including a root controller and a controller that supports burning fuses similarly to the NameWrapper on L1 Ethereum.
 
-Foundry consists of:
+Along with the approval types in ERC-721, the design introduces a new type of approval — operator approvals limited to single tokens. It is also possible to clear all operator token approvals with a single function call. However, the registry's use of ERC-721 deviates from the standard by reverting all calls to balanceOf. ENS does not use this function in the protocol, and implementing it would waste gas.
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+When considering the differences between ERC-1155 and ERC-721, there are several advantages to ERC-721. The first advantage is that ERC-721 includes "unsafe" transfer functions, saving gas whenever a name is transferred or when creating a subname. ERC-721 is also an older, more established NFT standard, and natively includes an ownerOf() function, which is necessary for the ENS protocol.
 
-## Documentation
+It is also possible to limit safe transfers, which could be used in reentrancy attacks. For additional safety, the registry allows for pausing all safe transfer functions, leaving "unsafe" transfers as immutable methods. Safe transfer methods can potentially be exploited in reentrancy attacks, including not just reentrancy into the same contract but reentrancy across contracts as well.
 
-https://book.getfoundry.sh/
-
-## Usage
-
-### Build
-
-```shell
-$ forge build
-```
-
-### Test
-
-```shell
-$ forge test
-```
-
-### Format
-
-```shell
-$ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+Currently, the ENS 721 Registry is in an early stage of development, with significant parts of the code uncompleted, missing tests, and the code is un-audited. The code is open source, and issues and pull requests are welcome.
